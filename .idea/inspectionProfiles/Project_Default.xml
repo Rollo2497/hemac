@@ -1,0 +1,134 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="DuplicatedCode" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <Languages>
+        <language minSize="58" name="Python" />
+      </Languages>
+    </inspection_tool>
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="false" level="WARNING" enabled_by_default="false">
+      <option name="ignoredPackages">
+        <list>
+          <option value="absl-py" />
+          <option value="aiohttp" />
+          <option value="aiosignal" />
+          <option value="ale-py" />
+          <option value="antlr4-python3-runtime" />
+          <option value="applaunchservices" />
+          <option value="astunparse" />
+          <option value="async-timeout" />
+          <option value="baselines" />
+          <option value="binaryornot" />
+          <option value="box2d-py" />
+          <option value="cachetools" />
+          <option value="click-plugins" />
+          <option value="cvxopt" />
+          <option value="datasets" />
+          <option value="dbfread" />
+          <option value="dill" />
+          <option value="distlib" />
+          <option value="docker-pycreds" />
+          <option value="docopt" />
+          <option value="et-xmlfile" />
+          <option value="Farama-Notifications" />
+          <option value="fast-soft-sort" />
+          <option value="fasteners" />
+          <option value="flatbuffers" />
+          <option value="frozenlist" />
+          <option value="future" />
+          <option value="gast" />
+          <option value="GDAL" />
+          <option value="glfw" />
+          <option value="google-auth" />
+          <option value="google-auth-oauthlib" />
+          <option value="google-pasta" />
+          <option value="gpt-2-simple" />
+          <option value="gym" />
+          <option value="gym-navigation" />
+          <option value="gym-notices" />
+          <option value="gymnasium" />
+          <option value="huggingface-sb3" />
+          <option value="hydra-core" />
+          <option value="imageio" />
+          <option value="imitation" />
+          <option value="importlib-metadata" />
+          <option value="ipython-genutils" />
+          <option value="jax-jumpy" />
+          <option value="jsonpickle" />
+          <option value="keras" />
+          <option value="Keras-Preprocessing" />
+          <option value="libclang" />
+          <option value="llvmlite" />
+          <option value="Markdown" />
+          <option value="mccabe" />
+          <option value="msgpack" />
+          <option value="mujoco-py" />
+          <option value="multiagent" />
+          <option value="multidict" />
+          <option value="multiprocess" />
+          <option value="munch" />
+          <option value="munkres" />
+          <option value="node2vec" />
+          <option value="numpy-stl" />
+          <option value="oauthlib" />
+          <option value="omegaconf" />
+          <option value="opencv-python" />
+          <option value="openpyxl" />
+          <option value="opt-einsum" />
+          <option value="pathtools" />
+          <option value="ply" />
+          <option value="progressbar2" />
+          <option value="py-cpuinfo" />
+          <option value="pyarrow" />
+          <option value="pyasn1" />
+          <option value="pyasn1-modules" />
+          <option value="pygame" />
+          <option value="pyglet" />
+          <option value="pykalman" />
+          <option value="Pyomo" />
+          <option value="PyOpenGL" />
+          <option value="PyQt5-sip" />
+          <option value="python-utils" />
+          <option value="ray" />
+          <option value="requests-oauthlib" />
+          <option value="rsa" />
+          <option value="sacred" />
+          <option value="seals" />
+          <option value="sphinxcontrib-devhelp" />
+          <option value="sphinxcontrib-jsmath" />
+          <option value="sphinxcontrib-qthelp" />
+          <option value="stable-baselines" />
+          <option value="stable-baselines3" />
+          <option value="swig" />
+          <option value="tensorboard" />
+          <option value="tensorboard-data-server" />
+          <option value="tensorboard-plugin-wit" />
+          <option value="tensorflow-macos" />
+          <option value="tensorflow-metal" />
+          <option value="termcolor" />
+          <option value="text-unidecode" />
+          <option value="tf-estimator-nightly" />
+          <option value="tf-slim" />
+          <option value="toposort" />
+          <option value="torchvision" />
+          <option value="virtualenv" />
+          <option value="wasabi" />
+          <option value="webencodings" />
+          <option value="Werkzeug" />
+          <option value="xxhash" />
+          <option value="yarl" />
+          <option value="zmq" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8NamingInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="N806" />
+          <option value="N803" />
+          <option value="N812" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

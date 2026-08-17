@@ -8,6 +8,7 @@ import numpy as np
 import gymnasium
 from .sensors import ForwardFacingCamera, Sensor
 from .world import world_ref_to_game_ref
+from hemac.helpers.logger import LOGGER
 
 
 class Observer(BaseAgent):
@@ -98,7 +99,7 @@ class Observer(BaseAgent):
         # communication only possible if near a building
         if self.goal_estimation is not None:
             if not world.obstacles:
-                print(f"no obstacles! infinite comm range")
+                LOGGER.debug("no obstacles! infinite comm range")
                 world.observer_communication = self.goal_estimation
             else:
                 for obstacle in world.obstacles:
