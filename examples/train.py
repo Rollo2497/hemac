@@ -21,11 +21,14 @@ Usage:
 import argparse
 import datetime
 import os
+import shutil
+import tempfile
 
 import gymnasium
 import numpy as np
 from stable_baselines3 import DQN, PPO, SAC
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from hemac import HeMAC_v0
 
@@ -97,6 +100,59 @@ class PolicyBook:
     def model_for(self, agent: str):
         """Return the model controlling `agent`, or None while it is still untrained."""
         return self.models.get(self.agent_to_group[agent])
+
+    def snapshot(self, directory: str, algorithm: str):
+        """Freeze the current policies to disk and return a picklable handle to them.
+
+        Live SB3 models hold weakrefs and cannot be cloudpickled into worker processes, so
+        parallel rollouts ship file paths instead and each worker loads its own copy.
+
+        Args:
+        ----
+            directory (str): Directory to write the checkpoints into.
+            algorithm (str): Key of `ALGOS` used to reload them.
+
+        Returns:
+        -------
+            PolicySnapshot: Handle usable in place of this book.
+
+        """
+        paths = {}
+        for key, model in self.models.items():
+            path = os.path.join(directory, f"partner_{key}")
+            model.save(path)
+            paths[key] = f"{path}.zip"
+        return PolicySnapshot(dict(self.agent_to_group), paths, algorithm)
+
+
+class PolicySnapshot:
+    """Picklable, read-only view of frozen partner policies, loaded lazily per process."""
+
+    def __init__(self, agent_to_group: dict, paths: dict, algorithm: str):
+        """Build the snapshot from an agent-to-group map and group-to-checkpoint paths."""
+        self.agent_to_group = agent_to_group
+        self.paths = paths
+        self.algorithm = algorithm
+        self._loaded = {}
+
+    def __getstate__(self):
+        """Drop loaded models so only paths cross the process boundary."""
+        return {"agent_to_group": self.agent_to_group, "paths": self.paths, "algorithm": self.algorithm}
+
+    def __setstate__(self, state):
+        """Restore paths and start with an empty per-process model cache."""
+        self.__dict__.update(state)
+        self._loaded = {}
+
+    def model_for(self, agent: str):
+        """Return the frozen model controlling `agent`, loading it on first use."""
+        key = self.agent_to_group[agent]
+        path = self.paths.get(key)
+        if path is None:
+            return None
+        if key not in self._loaded:
+            self._loaded[key] = ALGOS[self.algorithm].load(path, device="cpu")
+        return self._loaded[key]
 
 
 class SingleAgentAdapter(gymnasium.Env):
@@ -175,6 +231,58 @@ class SingleAgentAdapter(gymnasium.Env):
         self.env.close()
 
 
+def make_env_fn(env_kwargs: dict, learner: str, book, seed: int):
+    """Return a zero-argument factory that builds one monitored learner environment.
+
+    Used for both `DummyVecEnv` and `SubprocVecEnv`. For the subprocess case the closure
+    (including the frozen partner policies in `book`) is cloudpickled into each worker, which
+    is sound because partner policies do not change within a round.
+
+    Args:
+    ----
+        env_kwargs (dict): Kwargs forwarded to `HeMAC_v0.parallel_env`.
+        learner (str): Name of the agent being trained.
+        book (PolicyBook): Policies driving the other agents.
+        seed (int): Seed for this worker's first episode.
+
+    Returns:
+    -------
+        callable: Factory producing a `Monitor`-wrapped `SingleAgentAdapter`.
+
+    """
+
+    def _init():
+        return Monitor(SingleAgentAdapter(env_kwargs, learner, book, seed=seed))
+
+    return _init
+
+
+def make_vec_env(env_kwargs: dict, learner: str, book, seed: int, n_envs: int):
+    """Build a vectorised learner environment.
+
+    `SubprocVecEnv` runs each copy in its own process, which is what makes extra cores useful:
+    HeMAC stepping is single-threaded pygame work, so one environment leaves a multi-core
+    machine mostly idle.
+
+    Args:
+    ----
+        env_kwargs (dict): Kwargs forwarded to `HeMAC_v0.parallel_env`.
+        learner (str): Name of the agent being trained.
+        book (PolicyBook): Policies driving the other agents.
+        seed (int): Base seed; each copy gets `seed + i`.
+        n_envs (int): Number of environment copies. 1 keeps everything in-process.
+
+    Returns:
+    -------
+        VecEnv: The vectorised environment.
+
+    """
+    fns = [make_env_fn(env_kwargs, learner, book, seed + i) for i in range(n_envs)]
+    if n_envs > 1:
+        return SubprocVecEnv(fns)
+    return DummyVecEnv(fns)
+
+
 def build_groups(possible_agents: list, share_by_type: bool) -> dict:
     """Group agents into policies.
 
@@ -228,6 +336,7 @@ def train(
     seed: int = 0,
     share_by_type: bool = True,
     n_steps: int = 1024,
+    n_envs: int = 1,
     log_dir: str = "./tensorboard_logs",
 ):
     """Train one policy per group by rotating through the groups for several rounds.
@@ -240,7 +349,8 @@ def train(
         steps_per_round (int): Environment steps per group per round.
         seed (int): Base seed.
         share_by_type (bool): Share one policy across all agents of the same type.
-        n_steps (int): PPO rollout length. Must not exceed `steps_per_round`.
+        n_steps (int): PPO rollout length per environment.
+        n_envs (int): Environment copies run in parallel. >1 uses one process each.
         log_dir (str): Tensorboard directory.
 
     Returns:
@@ -250,8 +360,15 @@ def train(
     """
     if algorithm not in ALGOS:
         raise ValueError(f"Unsupported algorithm: {algorithm}. Available: {sorted(ALGOS)}")
-    if algorithm == "PPO" and steps_per_round < n_steps:
-        raise ValueError(f"steps_per_round ({steps_per_round}) must be >= n_steps ({n_steps}) for PPO.")
+    if n_envs < 1:
+        raise ValueError(f"n_envs must be >= 1, got {n_envs}.")
+    if algorithm != "PPO" and n_envs > 1:
+        raise ValueError(f"{algorithm} does not support n_envs > 1 here; use PPO or set --n-envs 1.")
+    # PPO collects n_steps per environment per update, so one update costs n_steps * n_envs.
+    if algorithm == "PPO" and steps_per_round < n_steps * n_envs:
+        raise ValueError(
+            f"steps_per_round ({steps_per_round}) must be >= n_steps * n_envs ({n_steps * n_envs}) for PPO."
+        )
 
     env_kwargs = get_scenario(task)
     env_kwargs["render_mode"] = None
@@ -273,7 +390,10 @@ def train(
     for rnd in range(rounds):
         for key, members in groups.items():
             learner = members[0]  # members share weights, so training one updates them all
-            env = Monitor(SingleAgentAdapter(env_kwargs, learner, book, seed=seed + rnd))
+            # Workers cannot receive live models, so freeze partners to disk for this round.
+            snap_dir = tempfile.mkdtemp(prefix="hemac_partners_") if n_envs > 1 else None
+            partners = book.snapshot(snap_dir, algorithm) if n_envs > 1 else book
+            env = make_vec_env(env_kwargs, learner, partners, seed + rnd * n_envs, n_envs)
             model = book.models.get(key)
             if model is None:
                 model = make_model(algorithm, env, seed + rnd, f"{log_dir}/train_{algorithm}_{timestamp}", n_steps)
@@ -289,6 +409,8 @@ def train(
                 progress_bar=False,
             )
             env.close()
+            if snap_dir:
+                shutil.rmtree(snap_dir, ignore_errors=True)
 
     saved = {}
     for agent in possible_agents:
@@ -307,7 +429,14 @@ def main():
     parser.add_argument("--algorithm", default="PPO", choices=sorted(ALGOS), help="SB3 algorithm")
     parser.add_argument("--rounds", type=int, default=4, help="training rounds per policy group")
     parser.add_argument("--steps-per-round", type=int, default=20000, help="env steps per group per round")
-    parser.add_argument("--n-steps", type=int, default=1024, help="PPO rollout length")
+    parser.add_argument("--n-steps", type=int, default=1024, help="PPO rollout length per environment")
+    parser.add_argument(
+        "--n-envs",
+        type=int,
+        default=1,
+        help="parallel environment copies (PPO only); >1 spawns one process each. "
+        "Try roughly the core count, e.g. --n-envs 8",
+    )
     parser.add_argument("--seed", type=int, default=0, help="base random seed")
     parser.add_argument(
         "--per-agent-policy",
@@ -327,6 +456,7 @@ def main():
         seed=args.seed,
         share_by_type=not args.per_agent_policy,
         n_steps=args.n_steps,
+        n_envs=args.n_envs,
     )
 
 
